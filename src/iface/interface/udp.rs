@@ -25,13 +25,41 @@ impl InterfaceInner {
         ));
 
         #[cfg(feature = "socket-udp")]
-        for udp_socket in sockets
-            .items_mut()
-            .filter_map(|i| UdpSocket::downcast_mut(&mut i.socket))
         {
-            if udp_socket.accepts(self, &ip_repr, &udp_repr) {
-                udp_socket.process(self, meta, &ip_repr, &udp_repr, udp_packet.payload());
-                return None;
+            // Find the best matching socket based on priority score
+            // We need to do this in two passes because we can't hold mutable references
+            // to multiple sockets at once.
+
+            // First pass: find the best match
+            let mut best_match: Option<(usize, u8)> = None;
+
+            for (idx, item) in sockets.items().enumerate() {
+                if let Some(udp_socket) = UdpSocket::downcast(&item.socket) {
+                    let score = udp_socket.accepts(self, &ip_repr, &udp_repr);
+                    if score > 0 {
+                        match best_match {
+                            Some((_, best_score)) if score > best_score => {
+                                best_match = Some((idx, score));
+                            }
+                            None => {
+                                best_match = Some((idx, score));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            // Second pass: process the packet with the best matching socket
+            if let Some((best_idx, _)) = best_match {
+                for (idx, item) in sockets.items_mut().enumerate() {
+                    if idx == best_idx {
+                        if let Some(udp_socket) = UdpSocket::downcast_mut(&mut item.socket) {
+                            udp_socket.process(self, meta, &ip_repr, &udp_repr, udp_packet.payload());
+                            return None;
+                        }
+                    }
+                }
             }
         }
 

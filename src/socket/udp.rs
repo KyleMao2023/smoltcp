@@ -119,6 +119,9 @@ impl std::error::Error for RecvError {}
 #[derive(Debug)]
 pub struct Socket<'a> {
     endpoint: IpListenEndpoint,
+    /// Remote endpoint for connected UDP sockets.
+    /// When set, the socket will only accept packets from this remote endpoint.
+    remote_endpoint: Option<IpEndpoint>,
     rx_buffer: PacketBuffer<'a>,
     tx_buffer: PacketBuffer<'a>,
     /// The time-to-live (IPv4) or hop limit (IPv6) value used in outgoing packets.
@@ -134,6 +137,7 @@ impl<'a> Socket<'a> {
     pub fn new(rx_buffer: PacketBuffer<'a>, tx_buffer: PacketBuffer<'a>) -> Socket<'a> {
         Socket {
             endpoint: IpListenEndpoint::default(),
+            remote_endpoint: None,
             rx_buffer,
             tx_buffer,
             hop_limit: None,
@@ -238,10 +242,64 @@ impl<'a> Socket<'a> {
         Ok(())
     }
 
+    /// Connect the socket to a remote endpoint.
+    ///
+    /// When connected, the socket will only accept packets from the specified
+    /// remote endpoint and will use it as the default destination for sends.
+    /// This follows standard UDP "connected" socket semantics as defined by POSIX.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(BindError::Unaddressable)` if the remote endpoint has an
+    /// unspecified address or port 0.
+    pub fn connect<T: Into<IpEndpoint>>(&mut self, remote_endpoint: T) -> Result<(), BindError> {
+        let remote_endpoint = remote_endpoint.into();
+
+        if remote_endpoint.addr.is_unspecified() || remote_endpoint.port == 0 {
+            return Err(BindError::Unaddressable);
+        }
+
+        self.remote_endpoint = Some(remote_endpoint);
+
+        #[cfg(feature = "async")]
+        {
+            self.rx_waker.wake();
+        }
+
+        Ok(())
+    }
+
+    /// Disconnect the socket from its remote endpoint.
+    ///
+    /// After disconnecting, the socket will accept packets from any source.
+    pub fn disconnect(&mut self) {
+        self.remote_endpoint = None;
+
+        #[cfg(feature = "async")]
+        {
+            self.rx_waker.wake();
+        }
+    }
+
+    /// Check if the socket is connected to a remote endpoint.
+    #[inline]
+    pub fn is_connected(&self) -> bool {
+        self.remote_endpoint.is_some()
+    }
+
+    /// Get the remote endpoint this socket is connected to, if any.
+    #[inline]
+    pub fn remote_endpoint(&self) -> Option<IpEndpoint> {
+        self.remote_endpoint
+    }
+
     /// Close the socket.
     pub fn close(&mut self) {
         // Clear the bound endpoint of the socket.
         self.endpoint = IpListenEndpoint::default();
+
+        // Clear the remote endpoint (disconnect).
+        self.remote_endpoint = None;
 
         // Reset the RX and TX buffers of the socket.
         self.tx_buffer.reset();
@@ -477,19 +535,54 @@ impl<'a> Socket<'a> {
         self.rx_buffer.payload_bytes_count()
     }
 
-    pub(crate) fn accepts(&self, cx: &mut Context, ip_repr: &IpRepr, repr: &UdpRepr) -> bool {
+    /// Check if the socket accepts a given packet.
+    ///
+    /// Returns a match priority score:
+    /// - 0: Does not accept
+    /// - 1: Accepts with wildcard binding (addr=None) and not connected
+    /// - 2: Accepts with specific local address binding and not connected
+    /// - 3: Accepts and connected to the source (highest priority)
+    ///
+    /// Higher scores indicate better matches. This allows proper routing
+    /// when multiple sockets are bound to the same port.
+    pub(crate) fn accepts(&self, cx: &mut Context, ip_repr: &IpRepr, repr: &UdpRepr) -> u8 {
+        // Check destination port
         if self.endpoint.port != repr.dst_port {
-            return false;
-        }
-        if self.endpoint.addr.is_some()
-            && self.endpoint.addr != Some(ip_repr.dst_addr())
-            && !cx.is_broadcast(&ip_repr.dst_addr())
-            && !ip_repr.dst_addr().is_multicast()
-        {
-            return false;
+            return 0;
         }
 
-        true
+        // Check destination address
+        let addr_matches = if self.endpoint.addr.is_some() {
+            self.endpoint.addr == Some(ip_repr.dst_addr())
+                || cx.is_broadcast(&ip_repr.dst_addr())
+                || ip_repr.dst_addr().is_multicast()
+        } else {
+            true
+        };
+
+        if !addr_matches {
+            return 0;
+        }
+
+        // If socket is connected, check if source matches
+        if let Some(remote) = self.remote_endpoint {
+            if remote.addr == ip_repr.src_addr() && remote.port == repr.src_port {
+                // Connected socket with matching source has highest priority
+                return 3;
+            } else {
+                // Connected socket but source doesn't match - reject
+                return 0;
+            }
+        }
+
+        // Not connected - accept based on local address binding
+        if self.endpoint.addr.is_some() {
+            // Specific address binding has higher priority
+            2
+        } else {
+            // Wildcard binding (addr=None) has lower priority
+            1
+        }
     }
 
     pub(crate) fn process(
@@ -500,7 +593,7 @@ impl<'a> Socket<'a> {
         repr: &UdpRepr,
         payload: &[u8],
     ) {
-        debug_assert!(self.accepts(cx, ip_repr, repr));
+        debug_assert!(self.accepts(cx, ip_repr, repr) > 0);
 
         let size = payload.len();
 
@@ -844,7 +937,7 @@ mod test {
         assert!(!socket.can_recv());
         assert_eq!(socket.recv(), Err(RecvError::Exhausted));
 
-        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR));
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR) > 0);
         socket.process(
             cx,
             PacketMeta::default(),
@@ -854,7 +947,7 @@ mod test {
         );
         assert!(socket.can_recv());
 
-        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR));
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR) > 0);
         socket.process(
             cx,
             PacketMeta::default(),
@@ -920,7 +1013,7 @@ mod test {
 
         assert_eq!(socket.bind(LOCAL_PORT), Ok(()));
 
-        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR));
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR) > 0);
         socket.process(
             cx,
             PacketMeta::default(),
@@ -1013,9 +1106,9 @@ mod test {
         assert_eq!(socket.bind(LOCAL_PORT), Ok(()));
 
         let mut udp_repr = REMOTE_UDP_REPR;
-        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &udp_repr));
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &udp_repr) > 0);
         udp_repr.dst_port += 1;
-        assert!(!socket.accepts(cx, &REMOTE_IP_REPR, &udp_repr));
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &udp_repr) == 0);
     }
 
     #[rstest]
@@ -1031,11 +1124,11 @@ mod test {
 
         let mut port_bound_socket = socket(buffer(1), buffer(0));
         assert_eq!(port_bound_socket.bind(LOCAL_PORT), Ok(()));
-        assert!(port_bound_socket.accepts(cx, &BAD_IP_REPR, &REMOTE_UDP_REPR));
+        assert!(port_bound_socket.accepts(cx, &BAD_IP_REPR, &REMOTE_UDP_REPR) > 0);
 
         let mut ip_bound_socket = socket(buffer(1), buffer(0));
         assert_eq!(ip_bound_socket.bind(LOCAL_END), Ok(()));
-        assert!(!ip_bound_socket.accepts(cx, &BAD_IP_REPR, &REMOTE_UDP_REPR));
+        assert!(ip_bound_socket.accepts(cx, &BAD_IP_REPR, &REMOTE_UDP_REPR) == 0);
     }
 
     #[test]
@@ -1088,4 +1181,77 @@ mod test {
         socket.close();
         assert!(!socket.is_open());
     }
+
+    #[rstest]
+    #[case::ip(Medium::Ip)]
+    #[cfg(feature = "medium-ip")]
+    #[case::ethernet(Medium::Ethernet)]
+    #[cfg(feature = "medium-ethernet")]
+    #[case::ieee802154(Medium::Ieee802154)]
+    #[cfg(feature = "medium-ieee802154")]
+    fn test_connect_and_accept(#[case] medium: Medium) {
+        let (mut iface, _, _) = setup(medium);
+        let cx = iface.context();
+
+        let mut socket = socket(buffer(1), buffer(0));
+        assert_eq!(socket.bind(LOCAL_PORT), Ok(()));
+
+        // Before connect, accepts from any source
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR) > 0);
+
+        // Connect to remote endpoint
+        assert_eq!(socket.connect(REMOTE_END), Ok(()));
+        assert!(socket.is_connected());
+        assert_eq!(socket.remote_endpoint(), Some(REMOTE_END));
+
+        // After connect, only accepts from connected remote
+        assert_eq!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR), 3); // Highest priority
+
+        // Should reject packets from different source
+        let other_ip_repr = IpRepr::Ipv4(Ipv4Repr {
+            src_addr: Ipv4Address([10, 0, 0, 99]),
+            dst_addr: LOCAL_ADDR.into_address(),
+            next_header: IpProtocol::Udp,
+            payload_len: 0,
+            hop_limit: 64,
+        });
+        assert_eq!(socket.accepts(cx, &other_ip_repr, &REMOTE_UDP_REPR), 0);
+
+        // Disconnect
+        socket.disconnect();
+        assert!(!socket.is_connected());
+        assert_eq!(socket.remote_endpoint(), None);
+
+        // After disconnect, accepts from any source again
+        assert!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR) > 0);
+    }
+
+    #[rstest]
+    #[case::ip(Medium::Ip)]
+    #[cfg(feature = "medium-ip")]
+    #[case::ethernet(Medium::Ethernet)]
+    #[cfg(feature = "medium-ethernet")]
+    #[case::ieee802154(Medium::Ieee802154)]
+    #[cfg(feature = "medium-ieee802154")]
+    fn test_connected_socket_priority(#[case] medium: Medium) {
+        let (mut iface, _, _) = setup(medium);
+        let cx = iface.context();
+
+        // Socket 1: wildcard binding, not connected
+        let mut socket1 = socket(buffer(1), buffer(0));
+        assert_eq!(socket1.bind(LOCAL_PORT), Ok(()));
+
+        // Socket 2: wildcard binding, connected to remote
+        let mut socket2 = socket(buffer(1), buffer(0));
+        assert_eq!(socket2.bind(LOCAL_PORT), Ok(()));
+        assert_eq!(socket2.connect(REMOTE_END), Ok(()));
+
+        // Socket 2 should have higher priority (score 3 vs 1)
+        let score1 = socket1.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR);
+        let score2 = socket2.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR);
+        assert_eq!(score1, 1); // Wildcard, not connected
+        assert_eq!(score2, 3); // Connected
+        assert!(score2 > score1);
+    }
 }
+
