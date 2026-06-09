@@ -332,25 +332,25 @@ impl<T: AsRef<[u8]>> Packet<T> {
     /// and can respond to ARP requests”.
     pub fn client_ip(&self) -> Ipv4Address {
         let field = &self.buffer.as_ref()[field::CIADDR];
-        Ipv4Address::from_octets(field.try_into().unwrap())
+        crate::wire::ipv4_from_octets(field.try_into().unwrap())
     }
 
     /// Returns the value of the `yiaddr` field, zero if not set.
     pub fn your_ip(&self) -> Ipv4Address {
         let field = &self.buffer.as_ref()[field::YIADDR];
-        Ipv4Address::from_octets(field.try_into().unwrap())
+        crate::wire::ipv4_from_octets(field.try_into().unwrap())
     }
 
     /// Returns the value of the `siaddr` field, zero if not set.
     pub fn server_ip(&self) -> Ipv4Address {
         let field = &self.buffer.as_ref()[field::SIADDR];
-        Ipv4Address::from_octets(field.try_into().unwrap())
+        crate::wire::ipv4_from_octets(field.try_into().unwrap())
     }
 
     /// Returns the value of the `giaddr` field, zero if not set.
     pub fn relay_agent_ip(&self) -> Ipv4Address {
         let field = &self.buffer.as_ref()[field::GIADDR];
-        Ipv4Address::from_octets(field.try_into().unwrap())
+        crate::wire::ipv4_from_octets(field.try_into().unwrap())
     }
 
     pub fn flags(&self) -> Flags {
@@ -753,7 +753,7 @@ impl<'a> Repr<'a> {
                     }
                 }
                 (field::OPT_REQUESTED_IP, 4) => {
-                    requested_ip = Some(Ipv4Address::from_octets(data.try_into().unwrap()));
+                    requested_ip = Some(crate::wire::ipv4_from_octets(data.try_into().unwrap()));
                 }
                 (field::OPT_CLIENT_ID, 7) => {
                     let hardware_type = Hardware::from(u16::from(data[0]));
@@ -763,13 +763,13 @@ impl<'a> Repr<'a> {
                     client_identifier = Some(EthernetAddress::from_bytes(&data[1..]));
                 }
                 (field::OPT_SERVER_IDENTIFIER, 4) => {
-                    server_identifier = Some(Ipv4Address::from_octets(data.try_into().unwrap()));
+                    server_identifier = Some(crate::wire::ipv4_from_octets(data.try_into().unwrap()));
                 }
                 (field::OPT_ROUTER, 4) => {
-                    router = Some(Ipv4Address::from_octets(data.try_into().unwrap()));
+                    router = Some(crate::wire::ipv4_from_octets(data.try_into().unwrap()));
                 }
                 (field::OPT_SUBNET_MASK, 4) => {
-                    subnet_mask = Some(Ipv4Address::from_octets(data.try_into().unwrap()));
+                    subnet_mask = Some(crate::wire::ipv4_from_octets(data.try_into().unwrap()));
                 }
                 (field::OPT_MAX_DHCP_MESSAGE_SIZE, 2) => {
                     max_size = Some(u16::from_be_bytes([data[0], data[1]]));
@@ -795,7 +795,7 @@ impl<'a> Repr<'a> {
                         // if we attempt to push more than 4 addresses, and the only
                         // solution to that is to support more addresses.
                         servers
-                            .push(Ipv4Address::from_octets(chunk.try_into().unwrap()))
+                            .push(crate::wire::ipv4_from_octets(chunk.try_into().unwrap()))
                             .ok();
                     }
                     dns_servers = Some(servers);

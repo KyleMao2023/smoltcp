@@ -191,7 +191,7 @@ impl<T: AsRef<[u8]>> Header<T> {
     /// This function may panic if this header is not the Type2 Routing Header routing type.
     pub fn home_address(&self) -> Address {
         let data = self.buffer.as_ref();
-        Address::from_octets(data[field::HOME_ADDRESS].try_into().unwrap())
+        crate::wire::ipv6_from_octets(data[field::HOME_ADDRESS].try_into().unwrap())
     }
 }
 

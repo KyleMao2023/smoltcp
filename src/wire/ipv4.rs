@@ -346,14 +346,14 @@ impl<T: AsRef<[u8]>> Packet<T> {
     #[inline]
     pub fn src_addr(&self) -> Address {
         let data = self.buffer.as_ref();
-        Address::from_octets(data[field::SRC_ADDR].try_into().unwrap())
+        crate::wire::ipv4_from_octets(data[field::SRC_ADDR].try_into().unwrap())
     }
 
     /// Return the destination address field.
     #[inline]
     pub fn dst_addr(&self) -> Address {
         let data = self.buffer.as_ref();
-        Address::from_octets(data[field::DST_ADDR].try_into().unwrap())
+        crate::wire::ipv4_from_octets(data[field::DST_ADDR].try_into().unwrap())
     }
 
     /// Validate the header checksum.
@@ -915,11 +915,11 @@ pub(crate) mod test {
             ([192, 168, 0, 255], 32),
         ];
 
-        for addr in inside_subnet.iter().map(|a| Address::from_octets(*a)) {
+        for addr in inside_subnet.iter().map(|a| crate::wire::ipv4_from_octets(*a)) {
             assert!(cidr.contains_addr(&addr));
         }
 
-        for addr in outside_subnet.iter().map(|a| Address::from_octets(*a)) {
+        for addr in outside_subnet.iter().map(|a| crate::wire::ipv4_from_octets(*a)) {
             assert!(!cidr.contains_addr(&addr));
         }
 

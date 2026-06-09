@@ -1208,9 +1208,9 @@ mod test {
         assert_eq!(socket.accepts(cx, &REMOTE_IP_REPR, &REMOTE_UDP_REPR), 3); // Highest priority
 
         // Should reject packets from different source
-        let other_ip_repr = IpRepr::Ipv4(Ipv4Repr {
-            src_addr: Ipv4Address([10, 0, 0, 99]),
-            dst_addr: LOCAL_ADDR.into_address(),
+        let other_ip_repr = IpRepr::Ipv4(IpvXRepr {
+            src_addr: IpvXAddress::new(10, 0, 0, 99),
+            dst_addr: LOCAL_ADDR,
             next_header: IpProtocol::Udp,
             payload_len: 0,
             hop_limit: 64,
@@ -1254,4 +1254,3 @@ mod test {
         assert!(score2 > score1);
     }
 }
-

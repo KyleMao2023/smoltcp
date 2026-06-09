@@ -338,11 +338,11 @@ impl<'a> RecordData<'a> {
     pub fn parse(type_: Type, data: &'a [u8]) -> Result<RecordData<'a>> {
         match type_ {
             #[cfg(feature = "proto-ipv4")]
-            Type::A => Ok(RecordData::A(Ipv4Address::from_octets(
+            Type::A => Ok(RecordData::A(crate::wire::ipv4_from_octets(
                 data.try_into().map_err(|_| Error)?,
             ))),
             #[cfg(feature = "proto-ipv6")]
-            Type::Aaaa => Ok(RecordData::Aaaa(Ipv6Address::from_octets(
+            Type::Aaaa => Ok(RecordData::Aaaa(crate::wire::ipv6_from_octets(
                 data.try_into().map_err(|_| Error)?,
             ))),
             Type::Cname => Ok(RecordData::Cname(data)),

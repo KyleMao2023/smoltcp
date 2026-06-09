@@ -196,7 +196,7 @@ impl Address {
         bytes[1] = 0x80;
         bytes[8..].copy_from_slice(&self.as_eui_64()?);
 
-        Some(Ipv6Address::from_octets(bytes))
+        Some(crate::wire::ipv6_from_octets(bytes))
     }
 }
 

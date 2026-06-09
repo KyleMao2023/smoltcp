@@ -17,11 +17,11 @@ fn test_any_ip_accept_arp(#[case] medium: Medium) {
             source_hardware_addr: EthernetAddress::from_bytes(&[
                 0x02, 0x02, 0x02, 0x02, 0x02, 0x03,
             ]),
-            source_protocol_addr: Ipv4Address::from_octets([192, 168, 1, 2]),
+            source_protocol_addr: crate::wire::ipv4_from_octets([192, 168, 1, 2]),
             target_hardware_addr: EthernetAddress::from_bytes(&[
                 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
             ]),
-            target_protocol_addr: Ipv4Address::from_octets([192, 168, 1, 3]),
+            target_protocol_addr: crate::wire::ipv4_from_octets([192, 168, 1, 3]),
         };
         let mut frame = EthernetFrame::new_unchecked(&mut buffer[..]);
         ethernet_repr.emit(&mut frame);
@@ -1143,7 +1143,7 @@ fn test_raw_socket_tx_fragmentation(#[case] medium: Medium) {
     let mtu = device.capabilities().max_transmission_unit;
     let unaligned_length = mtu - IPV4_HEADER_LEN;
     // This check ensures a valid test in which we actually do adjust for alignment.
-    let mtu = if unaligned_length.is_multiple_of(IPV4_FRAGMENT_PAYLOAD_ALIGNMENT) {
+    let mtu = if unaligned_length % IPV4_FRAGMENT_PAYLOAD_ALIGNMENT == 0 {
         mtu + IPV4_FRAGMENT_PAYLOAD_ALIGNMENT / 2
     } else {
         mtu
@@ -1186,7 +1186,7 @@ fn test_raw_socket_tx_fragmentation(#[case] medium: Medium) {
             let result = f(&mut buffer[..len]);
             // Verify the payload size is aligned.
             let payload_size = len - IPV4_HEADER_LEN;
-            assert!(payload_size.is_multiple_of(IPV4_FRAGMENT_PAYLOAD_ALIGNMENT));
+            assert!(payload_size % IPV4_FRAGMENT_PAYLOAD_ALIGNMENT == 0);
             result
         }
     }
@@ -1542,9 +1542,6 @@ fn test_ipv4_fragment_size() {
     let (_, _, device) = setup(Medium::Ip);
     let caps = device.capabilities();
     for i in 0..IPV4_FRAGMENT_PAYLOAD_ALIGNMENT {
-        assert!(
-            caps.max_ipv4_fragment_size(HEADER_LEN + i)
-                .is_multiple_of(IPV4_FRAGMENT_PAYLOAD_ALIGNMENT)
-        );
+        assert!(caps.max_ipv4_fragment_size(HEADER_LEN + i) % IPV4_FRAGMENT_PAYLOAD_ALIGNMENT == 0);
     }
 }

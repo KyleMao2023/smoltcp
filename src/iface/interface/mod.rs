@@ -649,10 +649,12 @@ impl Interface {
                     if let Some(packet) =
                         self.inner
                             .process_ethernet(sockets, rx_meta, frame, &mut self.fragments)
-                        && let Err(err) =
-                            self.inner.dispatch(tx_token, packet, &mut self.fragmenter)
                     {
-                        net_debug!("Failed to send response: {:?}", err);
+                        if let Err(err) =
+                            self.inner.dispatch(tx_token, packet, &mut self.fragmenter)
+                        {
+                            net_debug!("Failed to send response: {:?}", err);
+                        }
                     }
                 }
                 #[cfg(feature = "medium-ip")]
@@ -660,14 +662,15 @@ impl Interface {
                     if let Some(packet) =
                         self.inner
                             .process_ip(sockets, rx_meta, frame, &mut self.fragments)
-                        && let Err(err) = self.inner.dispatch_ip(
+                    {
+                        if let Err(err) = self.inner.dispatch_ip(
                             tx_token,
                             PacketMeta::default(),
                             packet,
                             &mut self.fragmenter,
-                        )
-                    {
-                        net_debug!("Failed to send response: {:?}", err);
+                        ) {
+                            net_debug!("Failed to send response: {:?}", err);
+                        }
                     }
                 }
                 #[cfg(feature = "medium-ieee802154")]
@@ -675,14 +678,15 @@ impl Interface {
                     if let Some(packet) =
                         self.inner
                             .process_ieee802154(sockets, rx_meta, frame, &mut self.fragments)
-                        && let Err(err) = self.inner.dispatch_ip(
+                    {
+                        if let Err(err) = self.inner.dispatch_ip(
                             tx_token,
                             PacketMeta::default(),
                             packet,
                             &mut self.fragmenter,
-                        )
-                    {
-                        net_debug!("Failed to send response: {:?}", err);
+                        ) {
+                            net_debug!("Failed to send response: {:?}", err);
+                        }
                     }
                 }
             }

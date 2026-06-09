@@ -141,7 +141,7 @@ impl AddressExt for Address {
             let mut bytes = [0; 16];
             bytes[0..8].copy_from_slice(&link_prefix.address().octets()[0..8]);
             bytes[8..16].copy_from_slice(&eui64);
-            Some(Address::from_octets(bytes))
+            Some(crate::wire::ipv6_from_octets(bytes))
         } else {
             None
         }
@@ -472,14 +472,14 @@ impl<T: AsRef<[u8]>> Packet<T> {
     #[inline]
     pub fn src_addr(&self) -> Address {
         let data = self.buffer.as_ref();
-        Address::from_octets(data[field::SRC_ADDR].try_into().unwrap())
+        crate::wire::ipv6_from_octets(data[field::SRC_ADDR].try_into().unwrap())
     }
 
     /// Return the destination address field.
     #[inline]
     pub fn dst_addr(&self) -> Address {
         let data = self.buffer.as_ref();
-        Address::from_octets(data[field::DST_ADDR].try_into().unwrap())
+        crate::wire::ipv6_from_octets(data[field::DST_ADDR].try_into().unwrap())
     }
 }
 
@@ -927,11 +927,11 @@ pub(crate) mod test {
             ),
         ];
 
-        for addr in inside_subnet.iter().map(|a| Address::from_octets(*a)) {
+        for addr in inside_subnet.iter().map(|a| crate::wire::ipv6_from_octets(*a)) {
             assert!(cidr.contains_addr(&addr));
         }
 
-        for addr in outside_subnet.iter().map(|a| Address::from_octets(*a)) {
+        for addr in outside_subnet.iter().map(|a| crate::wire::ipv6_from_octets(*a)) {
             assert!(!cidr.contains_addr(&addr));
         }
 

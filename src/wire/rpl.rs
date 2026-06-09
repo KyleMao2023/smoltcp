@@ -377,7 +377,7 @@ impl<T: AsRef<[u8]>> Packet<T> {
     /// Return the DODAG id, which is an IPv6 address.
     #[inline]
     pub fn dio_dodag_id(&self) -> Address {
-        Address::from_octets(
+        crate::wire::ipv6_from_octets(
             self.buffer.as_ref()[field::DIO_DODAG_ID]
                 .try_into()
                 .unwrap(),
@@ -473,7 +473,7 @@ impl<T: AsRef<[u8]>> Packet<T> {
     #[inline]
     pub fn dao_dodag_id(&self) -> Option<Address> {
         if self.dao_dodag_id_present() {
-            Some(Address::from_octets(
+            Some(crate::wire::ipv6_from_octets(
                 self.buffer.as_ref()[field::DAO_DODAG_ID]
                     .try_into()
                     .unwrap(),
@@ -561,7 +561,7 @@ impl<T: AsRef<[u8]>> Packet<T> {
     #[inline]
     pub fn dao_ack_dodag_id(&self) -> Option<Address> {
         if self.dao_ack_dodag_id_present() {
-            Some(Address::from_octets(
+            Some(crate::wire::ipv6_from_octets(
                 self.buffer.as_ref()[field::DAO_ACK_DODAG_ID]
                     .try_into()
                     .unwrap(),
@@ -1448,7 +1448,7 @@ pub mod options {
         #[inline]
         pub fn parent_address(&self) -> Option<Address> {
             if self.option_length() > 5 {
-                Some(Address::from_octets(
+                Some(crate::wire::ipv6_from_octets(
                     self.buffer.as_ref()[field::TRANSIT_INFO_PARENT_ADDRESS]
                         .try_into()
                         .unwrap(),
@@ -1571,7 +1571,7 @@ pub mod options {
         /// Return the DODAG ID field.
         #[inline]
         pub fn dodag_id(&self) -> Address {
-            Address::from_octets(
+            crate::wire::ipv6_from_octets(
                 self.buffer.as_ref()[field::SOLICITED_INFO_DODAG_ID]
                     .try_into()
                     .unwrap(),
@@ -2059,7 +2059,7 @@ pub mod options {
                 }),
                 OptionType::RplTarget => Ok(Repr::RplTarget {
                     prefix_length: packet.target_prefix_length(),
-                    prefix: crate::wire::Ipv6Address::from_octets(
+                    prefix: crate::wire::ipv6_from_octets(
                         packet.target_prefix().try_into().unwrap(),
                     ),
                 }),
@@ -2463,7 +2463,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
-        let addr = Address::from_octets([
+        let addr = crate::wire::ipv6_from_octets([
             0xfd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x01, 0x00, 0x01, 0x00, 0x01,
             0x00, 0x01,
         ]);
@@ -2590,7 +2590,7 @@ mod tests {
             0x00, 0x02,
         ];
 
-        let parent_addr = Address::from_octets([
+        let parent_addr = crate::wire::ipv6_from_octets([
             0xfd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x01, 0x00, 0x01, 0x00, 0x01,
             0x00, 0x01,
         ]);

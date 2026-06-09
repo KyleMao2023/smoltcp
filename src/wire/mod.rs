@@ -77,6 +77,27 @@ mod field {
 
 pub mod pretty_print;
 
+#[doc(hidden)]
+#[inline]
+pub const fn ipv4_from_octets(octets: [u8; 4]) -> core::net::Ipv4Addr {
+    core::net::Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3])
+}
+
+#[doc(hidden)]
+#[inline]
+pub const fn ipv6_from_octets(octets: [u8; 16]) -> core::net::Ipv6Addr {
+    core::net::Ipv6Addr::new(
+        u16::from_be_bytes([octets[0], octets[1]]),
+        u16::from_be_bytes([octets[2], octets[3]]),
+        u16::from_be_bytes([octets[4], octets[5]]),
+        u16::from_be_bytes([octets[6], octets[7]]),
+        u16::from_be_bytes([octets[8], octets[9]]),
+        u16::from_be_bytes([octets[10], octets[11]]),
+        u16::from_be_bytes([octets[12], octets[13]]),
+        u16::from_be_bytes([octets[14], octets[15]]),
+    )
+}
+
 #[cfg(all(feature = "proto-ipv4", feature = "medium-ethernet"))]
 mod arp;
 #[cfg(feature = "proto-dhcpv4")]

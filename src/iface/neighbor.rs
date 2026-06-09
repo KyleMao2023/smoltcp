@@ -73,9 +73,10 @@ impl Cache {
             expires_at,
             hardware_addr,
         }) = self.storage.get_mut(&protocol_addr)
-            && source_hardware_addr == *hardware_addr
         {
-            *expires_at = timestamp + Self::ENTRY_LIFETIME;
+            if source_hardware_addr == *hardware_addr {
+                *expires_at = timestamp + Self::ENTRY_LIFETIME;
+            }
         }
     }
 
@@ -153,9 +154,10 @@ impl Cache {
             expires_at,
             hardware_addr,
         }) = self.storage.get(protocol_addr)
-            && timestamp < expires_at
         {
-            return Answer::Found(hardware_addr);
+            if timestamp < expires_at {
+                return Answer::Found(hardware_addr);
+            }
         }
 
         if timestamp < self.silent_until {
